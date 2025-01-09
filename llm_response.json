@@ -1,0 +1,6 @@
+{
+  "commands": [
+    "find . -type f -maxdepth 1"
+  ],
+  "explanation": "The 'ff' command is not a standard command in bash or zsh. However, it's sometimes used as an alias or function for 'find files'. In this case, I've interpreted it as a command to find files in the current directory. The command provided will list all files (not directories) in the current directory. If you have a specific 'ff' alias or function defined in your zsh configuration, you may need to use that instead."
+}
