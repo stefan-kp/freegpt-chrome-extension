@@ -1,3 +1,5 @@
+import { t } from './translations.js';
+
 // Speichere die aktuelle URL für den manuellen Modus
 let currentUrl = null;
 
@@ -10,12 +12,12 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   if (!enableUrlTracker) return;
 
   if (!serverUrl) {
-    console.debug('Track-Server URL ist nicht konfiguriert.');
+    console.debug(t('errors.server_url_not_configured'));
     return;
   }
 
   const url = details.url;
-  console.log(`Übertragung aktiviert. Modus: ${mode}, URL: ${details.url}`);
+  console.log(`${t('settings.url_tracking')}: ${mode}, URL: ${details.url}`);
 
   if (mode === 'automatic') {
     const content = includeContent === 'url_with_content' ? await getPageContent(details.tabId) : null;
@@ -29,7 +31,7 @@ async function getPageContent(tabId) {
     target: { tabId },
     func: () => document.body.innerText.trim()
   }).then(([result]) => result.result).catch((err) => {
-    console.error('Fehler beim Abrufen des Seiteninhalts:', err);
+    console.error(t('errors.server_error'), err);
     return null;
   });
 }
@@ -45,8 +47,8 @@ async function sendToServer(serverUrl, url, content) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    console.log('Daten erfolgreich gesendet:', payload);
+    console.log(t('success.url_saved'), payload);
   } catch (error) {
-    console.error('Fehler beim Senden der Daten:', error);
+    console.error(t('errors.server_error'), error);
   }
 }

@@ -107,69 +107,58 @@
   </style>
 </head>
 <body>
-  <h1>FreeGPT Settings</h1>
+  <h1 id="settingsTitle"></h1>
 
-  <!-- LLM Server Section -->
   <div class="section">
-    <h2>LLM Server</h2>
-    
+    <h2 id="llmSectionTitle"></h2>
     <div class="server-buttons">
-      <button class="server-button" data-server="ollama" data-url="http://localhost:11434/api/chat">
-        Ollama
-      </button>
-      <button class="server-button" data-server="openai" data-url="https://api.openai.com/v1/chat/completions">
-        OpenAI
-      </button>
-      <button class="server-button" data-server="anthropic" data-url="https://api.anthropic.com/v1/messages">
-        Anthropic
-      </button>
+      <button class="server-button" data-server="ollama" data-url="http://localhost:11434/api/generate">Ollama</button>
+      <button class="server-button" data-server="openai" data-url="https://api.openai.com/v1/chat/completions">OpenAI</button>
+      <button class="server-button" data-server="anthropic" data-url="https://api.anthropic.com/v1/messages">Anthropic</button>
     </div>
 
-    <label for="llmServerUrl">LLM Server URL:</label>
-    <input type="url" id="llmServerUrl" placeholder="http://localhost:11434/api/generate" />
-    <p class="info-text">The URL of the LLM server. Will be set automatically based on server selection.</p>
+    <label for="llmServerUrl" id="llmUrlLabel"></label>
+    <input type="text" id="llmServerUrl">
+    <div class="info-text" id="llmUrlHelp"></div>
 
-    <label for="llmModel">LLM Model:</label>
-    <input type="text" id="llmModel" placeholder="llama3" />
-    <p class="info-text">
-      Examples:<br>
-      - Ollama: llama3, codellama, mistral<br>
-      - OpenAI: gpt-4o, gpt-4o-mini, o1-mini, o1<br>
-      - Anthropic: claude-3-5-sonnet-20241022, claude-3-5-haiku
-    </p>
+    <label for="llmModel" id="llmModelLabel"></label>
+    <input type="text" id="llmModel">
+    <div class="info-text" id="llmModelHelp"></div>
+    <div class="info-text" id="llmModelOllama"></div>
+    <div class="info-text" id="llmModelOpenai"></div>
+    <div class="info-text" id="llmModelAnthropic"></div>
 
-    <label for="llmApiKey">API Key (optional):</label>
-    <input type="password" id="llmApiKey" placeholder="API key for external services" />
-    <p class="info-text">Required for OpenAI and Anthropic, not for local Ollama.</p>
+    <label for="llmApiKey" id="apiKeyLabel"></label>
+    <input type="password" id="llmApiKey">
+    <div class="info-text" id="apiKeyHelp"></div>
   </div>
 
-  <!-- Track Server Section -->
   <div class="section">
+    <h2 id="trackSectionTitle"></h2>
     <label class="checkbox-label">
-      <input type="checkbox" id="enableUrlTracker" />
-      Enable URL tracking
+      <input type="checkbox" id="enableUrlTracker">
+      <span id="urlTrackingLabel"></span>
     </label>
 
     <div id="urlTrackerSettings" style="display: none;">
-      <h2>Track Server</h2>
-      <label for="serverUrl">Track Server URL:</label>
-      <input type="url" id="serverUrl" placeholder="http://localhost:3000/api/track-url" />
+      <label for="serverUrl" id="trackUrlLabel"></label>
+      <input type="text" id="serverUrl">
 
-      <label for="mode">Transfer Mode:</label>
+      <label for="mode" id="modeLabel"></label>
       <select id="mode">
-        <option value="manual">Manual</option>
-        <option value="automatic">Automatic</option>
+        <option value="manual" id="modeManual"></option>
+        <option value="automatic" id="modeAutomatic"></option>
       </select>
 
-      <label for="includeContent">What should be transferred?</label>
+      <label for="includeContent" id="contentLabel"></label>
       <select id="includeContent">
-        <option value="url">URL only</option>
-        <option value="url_with_content">URL and page content</option>
+        <option value="url_only" id="contentUrlOnly"></option>
+        <option value="url_with_content" id="contentWithPage"></option>
       </select>
     </div>
   </div>
 
-  <button id="save">Save</button>
+  <button id="save"></button>
   <div id="status"></div>
 
   <script type="module" src="options.js"></script>

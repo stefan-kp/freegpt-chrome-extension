@@ -51,6 +51,28 @@ const translations = {
       assistant_role: 'Sie sind ein hilfreicher Assistent.',
       context_prefix: 'Kontext: Benutzer besucht die URL:',
       page_content: 'Seiteninhalt'
+    },
+    settings: {
+      title: 'FreeGPT Einstellungen',
+      llm_section: 'LLM Server',
+      track_section: 'Track Server',
+      url_tracking: 'URL Tracking aktivieren',
+      llm_url_label: 'LLM-Server URL:',
+      llm_url_help: 'Die URL des LLM-Servers. Wird automatisch basierend auf der Server-Auswahl gesetzt.',
+      llm_model_label: 'LLM Modell:',
+      llm_model_help: 'Beispiele:',
+      llm_model_ollama: 'Ollama: llama3, codellama, mistral',
+      llm_model_openai: 'OpenAI: gpt-4o, gpt-4o-mini, o1-mini, o1',
+      llm_model_anthropic: 'Anthropic: claude-3-5-sonnet-20241022, claude-3-5-haiku',
+      api_key_label: 'API Key (optional):',
+      api_key_help: 'Wird für OpenAI und Anthropic benötigt, nicht für lokales Ollama.',
+      track_url_label: 'Track-Server URL:',
+      mode_label: 'Übertragungsmodus:',
+      mode_manual: 'Manuell',
+      mode_automatic: 'Automatisch',
+      content_label: 'Was soll übertragen werden?',
+      content_url_only: 'Nur URL',
+      content_with_page: 'URL und Seiteninhalt'
     }
   },
   en: {
@@ -105,6 +127,28 @@ const translations = {
       assistant_role: 'You are a helpful assistant.',
       context_prefix: 'Context: User is visiting the URL:',
       page_content: 'Page content'
+    },
+    settings: {
+      title: 'FreeGPT Settings',
+      llm_section: 'LLM Server',
+      track_section: 'Track Server',
+      url_tracking: 'Enable URL tracking',
+      llm_url_label: 'LLM server URL:',
+      llm_url_help: 'The URL of the LLM server. Will be set automatically based on server selection.',
+      llm_model_label: 'LLM model:',
+      llm_model_help: 'Examples:',
+      llm_model_ollama: 'Ollama: llama3, codellama, mistral',
+      llm_model_openai: 'OpenAI: gpt-4o, gpt-4o-mini, o1-mini, o1',
+      llm_model_anthropic: 'Anthropic: claude-3-5-sonnet-20241022, claude-3-5-haiku',
+      api_key_label: 'API key (optional):',
+      api_key_help: 'Required for OpenAI and Anthropic, not for local Ollama.',
+      track_url_label: 'Track server URL:',
+      mode_label: 'Transfer mode:',
+      mode_manual: 'Manual',
+      mode_automatic: 'Automatic',
+      content_label: 'What should be transferred?',
+      content_url_only: 'URL only',
+      content_with_page: 'URL and page content'
     }
   }
 };

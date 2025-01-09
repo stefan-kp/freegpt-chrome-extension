@@ -10,6 +10,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const enableUrlTracker = document.getElementById('enableUrlTracker');
   const urlTrackerSettings = document.getElementById('urlTrackerSettings');
   const serverButtons = document.querySelectorAll('.server-button');
+  const saveButton = document.getElementById('save');
+
+  // Set all text content
+  document.getElementById('settingsTitle').textContent = t('settings.title');
+  document.getElementById('llmSectionTitle').textContent = t('settings.llm_section');
+  document.getElementById('trackSectionTitle').textContent = t('settings.track_section');
+  document.getElementById('urlTrackingLabel').textContent = t('settings.url_tracking');
+  document.getElementById('llmUrlLabel').textContent = t('settings.llm_url_label');
+  document.getElementById('llmUrlHelp').textContent = t('settings.llm_url_help');
+  document.getElementById('llmModelLabel').textContent = t('settings.llm_model_label');
+  document.getElementById('llmModelHelp').textContent = t('settings.llm_model_help');
+  document.getElementById('llmModelOllama').textContent = t('settings.llm_model_ollama');
+  document.getElementById('llmModelOpenai').textContent = t('settings.llm_model_openai');
+  document.getElementById('llmModelAnthropic').textContent = t('settings.llm_model_anthropic');
+  document.getElementById('apiKeyLabel').textContent = t('settings.api_key_label');
+  document.getElementById('apiKeyHelp').textContent = t('settings.api_key_help');
+  document.getElementById('trackUrlLabel').textContent = t('settings.track_url_label');
+  document.getElementById('modeLabel').textContent = t('settings.mode_label');
+  document.getElementById('modeManual').textContent = t('settings.mode_manual');
+  document.getElementById('modeAutomatic').textContent = t('settings.mode_automatic');
+  document.getElementById('contentLabel').textContent = t('settings.content_label');
+  document.getElementById('contentUrlOnly').textContent = t('settings.content_url_only');
+  document.getElementById('contentWithPage').textContent = t('settings.content_with_page');
+  saveButton.textContent = t('buttons.save');
+
+  // Set placeholders
+  llmServerUrl.placeholder = t('placeholders.llm_url');
+  serverUrl.placeholder = t('placeholders.track_url');
+  llmApiKey.placeholder = t('placeholders.api_key');
 
   // Load saved settings
   chrome.storage.sync.get(
@@ -57,7 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Save button handler
-  document.getElementById('save').addEventListener('click', () => {
+  saveButton.addEventListener('click', () => {
     const serverUrlValue = serverUrl.value.trim();
     const modeValue = mode.value;
     const includeContentValue = includeContent.value;
@@ -101,24 +130,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Save settings
-    chrome.storage.sync.set(
-      {
-        serverUrl: serverUrlValue,
-        mode: modeValue,
-        includeContent: includeContentValue,
-        llmServerUrl: llmServerUrlValue,
-        llmApiKey: llmApiKeyValue,
-        llmModel: llmModelValue,
-        selectedServer,
-        enableUrlTracker: enableUrlTrackerValue
-      },
-      () => {
-        statusDiv.textContent = t('success.settings_saved');
-        statusDiv.className = 'success';
-        setTimeout(() => {
-          statusDiv.style.display = 'none';
-        }, 2000);
-      }
-    );
+    chrome.storage.sync.set({
+      serverUrl: serverUrlValue,
+      mode: modeValue,
+      includeContent: includeContentValue,
+      llmServerUrl: llmServerUrlValue,
+      llmApiKey: llmApiKeyValue,
+      llmModel: llmModelValue,
+      selectedServer,
+      enableUrlTracker: enableUrlTrackerValue
+    }, () => {
+      statusDiv.textContent = t('success.settings_saved');
+      statusDiv.className = 'success';
+      setTimeout(() => {
+        statusDiv.style.display = 'none';
+      }, 2000);
+    });
   });
 });
