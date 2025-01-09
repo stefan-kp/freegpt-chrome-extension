@@ -86,8 +86,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Validate model selection
+    if (!llmModelValue) {
+      statusDiv.textContent = t('errors.model_required');
+      statusDiv.className = 'error';
+      return;
+    }
+
     // Validate API Key for external services
-    if (selectedServer !== 'ollama' && !llmApiKeyValue) {
+    if (selectedServer && (selectedServer === 'openai' || selectedServer === 'anthropic') && !llmApiKeyValue) {
       statusDiv.textContent = t('errors.api_key_required', { provider: selectedServer.toUpperCase() });
       statusDiv.className = 'error';
       return;

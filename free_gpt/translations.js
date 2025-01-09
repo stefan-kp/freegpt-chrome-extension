@@ -5,12 +5,13 @@ const translations = {
       llm_url_not_configured: 'LLM-Server URL ist nicht konfiguriert',
       server_error: 'Server antwortet mit Status',
       llm_server_error: 'LLM-Server antwortet mit Status',
-      invalid_track_url: 'Fehler: Ungültige Track-Server URL',
-      invalid_llm_url: 'Fehler: Ungültige LLM-Server URL',
-      api_key_required: 'Fehler: API Key wird für {provider} benötigt',
+      invalid_track_url: 'Bitte geben Sie eine gültige Track-Server URL ein',
+      invalid_llm_url: 'Bitte geben Sie eine gültige LLM-Server URL ein',
+      api_key_required: 'Für {provider} wird ein API-Schlüssel benötigt',
       mic_permission_denied: 'Bitte erlauben Sie den Zugriff auf das Mikrofon',
       no_speech_detected: 'Keine Sprache erkannt',
-      speech_error: 'Fehler bei der Spracherkennung'
+      speech_error: 'Fehler bei der Spracherkennung',
+      model_required: 'Bitte wählen Sie ein Modell aus'
     },
     success: {
       url_saved: 'URL erfolgreich gespeichert!',
@@ -76,9 +77,10 @@ const translations = {
       llm_url_not_configured: 'LLM server URL is not configured',
       server_error: 'Server responded with status',
       llm_server_error: 'LLM server responded with status',
-      invalid_track_url: 'Error: Invalid track server URL',
-      invalid_llm_url: 'Error: Invalid LLM server URL',
-      api_key_required: 'Error: API key required for {provider}',
+      invalid_track_url: 'Please enter a valid track server URL',
+      invalid_llm_url: 'Please enter a valid LLM server URL',
+      api_key_required: '{provider} requires an API key',
+      model_required: 'Please select a model',
       mic_permission_denied: 'Please allow microphone access',
       no_speech_detected: 'No speech detected',
       speech_error: 'Speech recognition error'

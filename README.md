@@ -2,6 +2,12 @@
 
 A Chrome extension that allows you to chat with various LLM providers about web page content. Unlike many similar tools that use freemium models or require paid subscriptions, FreeGPT is completely free and open, especially when used with your own Ollama server.
 
+![FreeGPT Chrome Extension](doc/screenshot.png)
+
+## Project Scope
+
+While the extension supports URL tracking functionality with a tracking server, this is not the main focus of the project. A simple sample server is included for debugging purposes, but the core functionality is the Chrome Extension itself with its LLM integration capabilities. If you need a production-ready tracking server, you'll need to implement it separately according to your requirements.
+
 ## Why FreeGPT?
 
 - 🆓 **Truly Free**: No hidden costs, no premium features, no usage limits

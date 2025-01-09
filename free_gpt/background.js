@@ -2,12 +2,15 @@
 let currentUrl = null;
 
 chrome.webNavigation.onCompleted.addListener(async (details) => {
-  const { serverUrl, mode, includeContent } = await new Promise((resolve) =>
-    chrome.storage.sync.get(['serverUrl', 'mode', 'includeContent'], resolve)
+  const { serverUrl, mode, includeContent, enableUrlTracker } = await new Promise((resolve) =>
+    chrome.storage.sync.get(['serverUrl', 'mode', 'includeContent', 'enableUrlTracker'], resolve)
   );
 
+  // Nur fortfahren, wenn URL-Tracking aktiviert ist
+  if (!enableUrlTracker) return;
+
   if (!serverUrl) {
-    console.error('Server-URL ist nicht konfiguriert.');
+    console.debug('Track-Server URL ist nicht konfiguriert.');
     return;
   }
 
