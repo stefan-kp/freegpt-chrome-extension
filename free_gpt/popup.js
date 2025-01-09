@@ -13,11 +13,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   let conversationHistory = [];
   const userLang = getUserLanguage();
 
+  // Listen for speech recognition results
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'speechResult') {
+      inputTextarea.value = message.text;
+      // Optional: Automatically trigger chat after speech input
+      // chatButton.click();
+    } else if (message.type === 'speechError') {
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'message error';
+      errorDiv.textContent = message.error;
+      chatContainer.appendChild(errorDiv);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+      
+      // Remove error message after 3 seconds
+      setTimeout(() => {
+        errorDiv.remove();
+      }, 3000);
+    }
+  });
+
   // Update placeholders and tooltips
   inputTextarea.placeholder = t('placeholders.chat_input');
   saveButton.title = t('tooltips.save_url');
   copyButton.title = t('tooltips.copy');
   optionsLink.title = t('tooltips.settings');
+  micButton.title = t('tooltips.microphone');
 
   // Chat Button Handler
   chatButton.addEventListener('click', async () => {
@@ -392,5 +413,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check if URL tracking is enabled and show/hide save button
   chrome.storage.sync.get(['enableUrlTracker'], (data) => {
     saveButton.style.display = data.enableUrlTracker ? 'flex' : 'none';
+  });
+
+  // Microphone button handler
+  micButton.addEventListener('click', () => {
+    chrome.windows.create({
+      url: 'microphone.html',
+      type: 'popup',
+      width: 300,
+      height: 200,
+      top: 0,
+      left: 0
+    });
   });
 }); 
