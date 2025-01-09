@@ -13,6 +13,41 @@ document.addEventListener('DOMContentLoaded', async () => {
   let conversationHistory = [];
   const userLang = getUserLanguage();
 
+  // Get current tab info
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const currentTabId = tab.id;
+  const currentUrl = tab.url;
+
+  // Try to restore conversation history for current tab
+  try {
+    const data = await chrome.storage.local.get(`chat_${currentTabId}`);
+    const storedChat = data[`chat_${currentTabId}`];
+    if (storedChat && storedChat.url === currentUrl) {
+      conversationHistory = storedChat.history;
+      // Restore chat messages in UI
+      conversationHistory.forEach(msg => {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${msg.role === 'user' ? 'user-message' : 'assistant-message'}`;
+        
+        if (msg.role === 'assistant' && containsMarkdown(msg.content)) {
+          messageDiv.classList.add('markdown-content');
+          messageDiv.innerHTML = marked.parse(msg.content);
+          messageDiv.querySelectorAll('a').forEach(link => {
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+          });
+        } else {
+          messageDiv.textContent = msg.content;
+        }
+        
+        chatContainer.appendChild(messageDiv);
+      });
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  } catch (error) {
+    console.error('Failed to restore chat history:', error);
+  }
+
   // Listen for speech recognition results
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'speechResult') {
@@ -259,11 +294,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         chatContainer.scrollTop = chatContainer.scrollHeight;
       }
 
-      // Add the complete message to conversation history
+      // Add the complete message to conversation history and store it
       if (currentMessage) {
         conversationHistory.push({
           role: "assistant",
           content: currentMessage
+        });
+        
+        // Store updated conversation history
+        await chrome.storage.local.set({
+          [`chat_${currentTabId}`]: {
+            url: currentUrl,
+            history: conversationHistory
+          }
         });
       }
 
@@ -385,7 +428,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     return markdownPatterns.some(pattern => pattern.test(text));
   }
 
-  function addMessage(content, isUser = false) {
+  // Helper function to add message and update storage
+  async function addMessage(content, isUser = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
     
@@ -407,6 +451,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     conversationHistory.push({
       role: isUser ? "user" : "assistant",
       content: content
+    });
+
+    // Store updated conversation history
+    await chrome.storage.local.set({
+      [`chat_${currentTabId}`]: {
+        url: currentUrl,
+        history: conversationHistory
+      }
     });
   }
 

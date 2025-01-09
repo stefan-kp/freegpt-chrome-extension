@@ -1,63 +1,31 @@
 # FreeGPT Chrome Extension
 
-A Chrome extension that allows you to chat with various LLM providers about web page content. Unlike many similar tools that use freemium models or require paid subscriptions, FreeGPT is completely free and open, especially when used with your own Ollama server.
+A Chrome extension that allows you to analyze web pages using various LLM services (Ollama, OpenAI, Anthropic).
 
-![FreeGPT Chrome Extension](doc/screenshot.png)
+## Coming Soon to Chrome Web Store!
+We're excited to announce that an official version of this extension will be available on the Chrome Web Store soon. The submission is in preparation and will be published in the near future.
 
-## Project Scope
-
-While the extension supports URL tracking functionality with a tracking server, this is not the main focus of the project. A simple sample server is included for debugging purposes, but the core functionality is the Chrome Extension itself with its LLM integration capabilities. If you need a production-ready tracking server, you'll need to implement it separately according to your requirements.
-
-## Why FreeGPT?
-
-- 🆓 **Truly Free**: No hidden costs, no premium features, no usage limits
-- 🔒 **Privacy-Focused**: Use your own Ollama server for complete data control
-- 🌐 **Flexible**: Also supports commercial providers (OpenAI, Anthropic) if desired
-- 💪 **Powerful**: Full-featured chat interface with the same capabilities as premium tools
-- 🎯 **No Vendor Lock-in**: Switch between providers or use your own models
+Until then, you can use the extension in developer mode by following the installation instructions below.
 
 ## Features
-
-- 🤖 Support for multiple LLM providers:
-  - Ollama (local models, completely free)
-  - OpenAI (GPT-4, etc., requires API key)
-  - Anthropic (Claude, requires API key)
-- 🌐 Multilingual support (English, German)
-- 📝 Markdown rendering for responses
-- 🔊 Speech-to-text input
-- 📋 Copy conversation to clipboard
-- 🔗 Optional URL tracking
-- 🎨 Clean, modern UI
+- Support for multiple LLM providers:
+  - Local Ollama server
+  - OpenAI (with API key)
+  - Anthropic (with API key)
+- Voice input support
+- Markdown rendering
+- Optional URL tracking
+- Temporary conversation storage
+- Multi-language support
 
 ## Installation
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/yourusername/freegpt-chrome-extension.git
-   ```
-
-2. Open Chrome and go to `chrome://extensions/`
-3. Enable "Developer mode" (top right)
-4. Click "Load unpacked" and select the extension folder
+1. Clone this repository or download the source code
+2. Open Chrome and navigate to `chrome://extensions`
+3. Enable "Developer mode" in the top right
+4. Click "Load unpacked" and select the extension directory
 
 ## Configuration
-
-### Ollama Setup (Recommended, Free Option)
-
-Ollama must be started with CORS support for the extension to access it:
-
-```bash
-OLLAMA_ORIGINS=* ollama serve
-```
-
-For the Desktop App: Stop Ollama and restart it with:
-
-```bash
-export OLLAMA_ORIGINS=*
-/Applications/Ollama.app/Contents/Resources/ollama serve
-```
-
-### Extension Settings
 
 1. Click the extension icon and select "Options"
 2. Configure:
