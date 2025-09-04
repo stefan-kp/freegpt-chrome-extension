@@ -9,9 +9,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const optionsLink = document.getElementById('optionsLink');
   const llmDetails = document.getElementById('llmDetails');
   const micButton = document.getElementById('micButton');
+  const newVideosBtn = document.getElementById('newVideos');
 
   let conversationHistory = [];
   const userLang = getUserLanguage();
+  const newVideosLink = document.getElementById('newVideosLink');
 
   // Get current tab info
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -28,7 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       conversationHistory.forEach(msg => {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${msg.role === 'user' ? 'user-message' : 'assistant-message'}`;
-        
+
         if (msg.role === 'assistant' && containsMarkdown(msg.content)) {
           messageDiv.classList.add('markdown-content');
           messageDiv.innerHTML = marked.parse(msg.content);
@@ -39,7 +41,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
           messageDiv.textContent = msg.content;
         }
-        
+
         chatContainer.appendChild(messageDiv);
       });
       chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -60,7 +62,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       errorDiv.textContent = message.error;
       chatContainer.appendChild(errorDiv);
       chatContainer.scrollTop = chatContainer.scrollHeight;
-      
+
       // Remove error message after 3 seconds
       setTimeout(() => {
         errorDiv.remove();
@@ -103,7 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       // Prepare system message with language context
-      const systemMessage = t('system_messages.assistant_role') + 
+      const systemMessage = t('system_messages.assistant_role') +
         ` Please respond in the user's language (${userLang}) unless he poses his question in different language. Use a natural, conversational tone.`;
 
       // Prepare context message
@@ -210,7 +212,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           body: errorText,
           sentPayload: payload
         });
-        
+
         let errorMessage = `${t('errors.llm_server_error')} ${response.status}`;
         try {
           const errorJson = JSON.parse(errorText);
@@ -234,7 +236,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (done) break;
 
         const chunk = decoder.decode(value);
-        
+
         // Handle different streaming formats
         if (selectedServer === 'openai') {
           const lines = chunk.split('\n');
@@ -271,7 +273,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.warn('Failed to parse Ollama response chunk:', e);
           }
         }
-        
+
         // Update the UI with the current message
         if (!messageDiv) {
           messageDiv = document.createElement('div');
@@ -300,7 +302,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           role: "assistant",
           content: currentMessage
         });
-        
+
         // Store updated conversation history
         await chrome.storage.local.set({
           [`chat_${currentTabId}`]: {
@@ -331,7 +333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      
+
       const response = await fetch(serverUrl, {
         method: 'POST',
         headers: {
@@ -362,13 +364,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const formattedConversation = conversationHistory
         .map(msg => `${msg.role === 'user' ? t('roles.user') : t('roles.assistant')}: ${msg.content}`)
         .join('\n\n');
-      
+
       await navigator.clipboard.writeText(formattedConversation);
-      
+
       const originalTitle = copyButton.title;
       copyButton.title = t('success.copied');
       copyButton.querySelector('svg').style.color = '#4CAF50';
-      
+
       setTimeout(() => {
         copyButton.title = originalTitle;
         copyButton.querySelector('svg').style.color = '';
@@ -377,7 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error(t('errors.copy_error'), error);
       copyButton.title = t('errors.copy_failed');
       copyButton.querySelector('svg').style.color = '#c62828';
-      
+
       setTimeout(() => {
         copyButton.title = t('tooltips.copy');
         copyButton.querySelector('svg').style.color = '';
@@ -396,7 +398,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { selectedServer, llmModel } = await new Promise((resolve) =>
       chrome.storage.sync.get(['selectedServer', 'llmModel'], resolve)
     );
-    
+
     if (selectedServer && llmModel) {
       const serverName = selectedServer.charAt(0).toUpperCase() + selectedServer.slice(1);
       llmDetails.textContent = `${serverName} (${llmModel})`;
@@ -432,11 +434,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function addMessage(content, isUser = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
-    
+
     if (!isUser && containsMarkdown(content)) {
       messageDiv.classList.add('markdown-content');
       messageDiv.innerHTML = marked.parse(content);
-      
+
       messageDiv.querySelectorAll('a').forEach(link => {
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
@@ -444,10 +446,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       messageDiv.textContent = content;
     }
-    
+
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
-    
+
     conversationHistory.push({
       role: isUser ? "user" : "assistant",
       content: content
@@ -467,6 +469,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     saveButton.style.display = data.enableUrlTracker ? 'flex' : 'none';
   });
 
+  // New Videos icon: open the videos page
+  if (newVideosBtn) {
+    newVideosBtn.addEventListener('click', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('videos.html') });
+    });
+  }
+
+  // Badge-like cue on the icon when there are new videos since last view
+  try {
+    const { youtubeVideos, lastVideosViewedAt } = await chrome.storage.local.get(['youtubeVideos', 'lastVideosViewedAt']);
+    const items = Object.values(youtubeVideos?.itemsById || {});
+    const lastViewed = lastVideosViewedAt ? new Date(lastVideosViewedAt).getTime() : 0;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const since = Date.now() - SEVEN_DAYS_MS;
+    const count = items.filter(v => {
+      const ts = new Date(v.publishedAt).getTime();
+      return ts >= since && ts > lastViewed;
+    }).length;
+    if (newVideosBtn) {
+      if (count > 0) {
+        newVideosBtn.classList.add('has-new');
+        newVideosBtn.title = `New Videos (${count})`;
+      } else {
+        newVideosBtn.classList.remove('has-new');
+        newVideosBtn.title = 'New Videos';
+      }
+    }
+  } catch (_) {}
+
+
   // Microphone button handler
   micButton.addEventListener('click', () => {
     chrome.windows.create({
@@ -478,4 +510,4 @@ document.addEventListener('DOMContentLoaded', async () => {
       left: 0
     });
   });
-}); 
+});

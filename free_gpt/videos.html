@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>New Videos</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; max-width: 960px; }
+    h1 { margin-top: 0; }
+    .controls { display: flex; gap: 10px; margin-bottom: 10px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+    .group-title { margin-top: 18px; font-weight: bold; font-size: 1.25em; display: flex; align-items: center; gap: 8px; }
+    .group-actions { display: inline-flex; gap: 6px; }
+    .hint { color: #666; font-size: 0.9em; margin-bottom: 10px; }
+
+    /* Reuse popup icon button styles */
+    .icon-button { background: none; border: none; padding: 2px; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 4px; transition: all 0.2s; }
+    .icon-button:hover { background-color: rgba(0,0,0,0.08); }
+    .icon-button svg { width: 20px; height: 20px; color: #666; }
+    .icon-button:hover svg { color: #2196F3; }
+
+    .thumb-cell { width: 140px; }
+    .thumb-img { width: 120px; height: 67px; object-fit: cover; border-radius: 4px; background: #f2f2f2; }
+    .title-cell { position: relative; }
+    .hover-card { display: none; position: absolute; top: 100%; left: 0; background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.15); width: 420px; z-index: 5; }
+    .hover-card .hc-thumb { width: 100%; max-height: 240px; object-fit: cover; border-radius: 4px; margin-bottom: 6px; background: #f2f2f2; }
+    .hover-card .hc-desc { font-size: 0.95em; color: #333; white-space: normal; }
+    .hover-card .hc-meta { font-size: 0.85em; color: #666; margin-top: 6px; }
+    .title-cell:hover .hover-card { display: block; }
+
+    .summary { margin: 10px 0 16px; background: #fafafa; border: 1px solid #eee; padding: 10px 12px; border-radius: 6px; }
+
+    .actions-cell { width: 40px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1 id="pageTitle">New Videos</h1>
+  <div class="hint" id="pageHint">Only videos from the last 7 days are shown.</div>
+  <div class="controls">
+    <button id="refreshNow">Refresh now</button>
+    <button id="sortByDate">Sort by date</button>
+    <button id="sortByChannel">Sort by channel</button>
+  </div>
+  <div id="refreshStatus" class="hint"></div>
+  <div id="content"></div>
+
+  <script type="module" src="videos.js"></script>
+</body>
+</html>
+

@@ -85,6 +85,10 @@
     button:hover {
       background-color: #45a049;
     }
+    #save {
+      margin-bottom: 20px;
+    }
+
     #status {
       margin-top: 15px;
       padding: 10px;
@@ -157,10 +161,31 @@
       </select>
     </div>
   </div>
-
   <button id="save"></button>
   <div id="status"></div>
 
+  <div class="section" id="youtubeSection">
+    <h2 id="youtubeSectionTitle"></h2>
+    <button id="youtubeScanButton"></button>
+    <div class="info-text" id="youtubeStatus"></div>
+    <div class="info-text"><span id="youtubeChannelsCount"></span> &middot; <span id="youtubeLastScan"></span></div>
+    <div class="info-text" id="youtubeHint"></div>
+    <div id="youtubeChannelsTableContainer" style="max-height: 260px; overflow: auto; border: 1px solid #eee; border-radius: 4px; margin-top: 10px;">
+      <table id="youtubeChannelsTable" style="width: 100%; border-collapse: collapse;">
+        <thead style="position: sticky; top: 0; background: #fafafa;">
+          <tr>
+            <th id="ytColChannel" style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;"></th>
+            <th id="ytColHandle" style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;"></th>
+            <th id="ytColLastChecked" style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;"></th>
+            <th id="ytColLastVideo" style="text-align: left; padding: 8px; border-bottom: 1px solid #eee;"></th>
+          </tr>
+        </thead>
+        <tbody id="youtubeChannelsTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="youtube_utils.js"></script>
   <script type="module" src="options.js"></script>
 </body>
 </html>

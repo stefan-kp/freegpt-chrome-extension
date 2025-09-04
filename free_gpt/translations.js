@@ -23,7 +23,8 @@ const translations = {
     buttons: {
       save: 'Speichern',
       chat: 'Chat',
-      processing: 'Wird verarbeitet...'
+      processing: 'Wird verarbeitet...',
+      summarize: 'Zusammenfassen'
     },
     tooltips: {
       save_url: 'URL speichern',
@@ -31,6 +32,8 @@ const translations = {
       settings: 'Einstellungen öffnen',
       microphone: 'Spracheingabe'
     },
+    dates: { today: 'Heute', yesterday: 'Gestern' },
+
     placeholders: {
       chat_input: 'Nachricht eingeben... (oder leer lassen für Zusammenfassung)',
       speech_input: 'Sprechen Sie jetzt...',
@@ -73,8 +76,23 @@ const translations = {
       content_label: 'Was soll übertragen werden?',
       content_url_only: 'Nur URL',
       content_with_page: 'URL und Seiteninhalt'
+    },
+    youtube: {
+      section_title: 'YouTube',
+      scan_button: 'Abonnements scannen',
+      scanning: 'Scanne Abonnements...',
+      scan_complete: 'Scan abgeschlossen',
+      no_channels_found: 'Keine Kanäle gefunden. Bitte melde dich bei YouTube an und versuche es erneut.',
+      channels_count_label: 'Kanäle',
+      last_scan_label: 'Letzter Scan',
+      col_channel: 'Kanal',
+      col_handle: 'Handle',
+      col_last_checked: 'Zuletzt geprüft',
+      col_last_video: 'Letztes Video',
+      hint_scan_then_poll: 'Die Kanäle werden nach dem Scan angezeigt. Details zu Videos erscheinen, sobald die Hintergrundaktualisierung aktiv ist.'
     }
   },
+
   en: {
     errors: {
       server_url_not_configured: 'Track server URL is not configured',
@@ -99,7 +117,8 @@ const translations = {
     buttons: {
       save: 'Save',
       chat: 'Chat',
-      processing: 'Processing...'
+      processing: 'Processing...',
+      summarize: 'Summarize'
     },
     tooltips: {
       save_url: 'Save URL',
@@ -114,6 +133,8 @@ const translations = {
       track_url: 'http://localhost:3000/api/track-url',
       api_key: 'API key for external services'
     },
+    dates: { today: 'Today', yesterday: 'Yesterday' },
+
     messages: {
       summarize_page: 'Please summarize this page.',
       llm_not_configured: 'LLM not configured',
@@ -149,6 +170,20 @@ const translations = {
       content_label: 'What should be transferred?',
       content_url_only: 'URL only',
       content_with_page: 'URL and page content'
+    },
+    youtube: {
+      section_title: 'YouTube',
+      scan_button: 'Scan my subscriptions',
+      scanning: 'Scanning subscriptions...',
+      scan_complete: 'Scan complete',
+      no_channels_found: 'No channels found. Please sign in to YouTube and try again.',
+      channels_count_label: 'Channels',
+      last_scan_label: 'Last scan',
+      col_channel: 'Channel',
+      col_handle: 'Handle',
+      col_last_checked: 'Last checked',
+      col_last_video: 'Last video',
+      hint_scan_then_poll: 'Channels are listed after scanning. Video details appear when background refresh is enabled.'
     }
   }
 };
@@ -164,18 +199,18 @@ const t = (key, params = {}) => {
   const lang = getUserLanguage();
   const keys = key.split('.');
   let value = translations[lang];
-  
+
   for (const k of keys) {
     value = value[k];
     if (!value) return key;
   }
-  
+
   // Replace parameters if any
   if (typeof value === 'string') {
     return value.replace(/\{(\w+)\}/g, (_, k) => params[k] || `{${k}}`);
   }
-  
+
   return value;
 };
 
-export { t, getUserLanguage }; 
+export { t, getUserLanguage };
