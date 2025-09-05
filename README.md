@@ -8,6 +8,12 @@ We're excited to announce that an official version of this extension will be ava
 Until then, you can use the extension in developer mode by following the installation instructions below.
 
 ## Features
+- YouTube “New Videos” page:
+  - Scans Suggested and History in an active tab for best coverage
+  - Completion banner with one‑click “Close Tab”
+  - Robust title extraction and local merge (dedupe by videoId)
+  - Per‑day Summarize using either Chrome’s on‑device Summarizer or your configured LLM
+  - Quick copy buttons for URLs/titles (great for NotebookLM workflows)
 - Support for multiple LLM providers:
   - Local Ollama server
   - OpenAI (with API key)

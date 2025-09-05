@@ -400,7 +400,7 @@ async function init() {
       debugEl.id = 'refreshDebug';
       debugEl.className = 'hint';
       const sum = document.createElement('summary');
-      sum.textContent = 'Scan debug';
+      sum.textContent = 'Scan results';
       debugEl.appendChild(sum);
       statusEl.after(debugEl);
     }
@@ -414,6 +414,18 @@ async function init() {
     const isScrape = payload && payload.action === 'scrape';
 
     const lines = [];
+    // If a compact summary is provided, show it first
+    if (payload && typeof payload.found === 'number') {
+      lines.push(`Found: ${payload.found} items`);
+      if (typeof payload.added === 'number' || typeof payload.updated === 'number') {
+        lines.push(`Saved: +${payload.added || 0} new, ${payload.updated || 0} updated`);
+      }
+      if (payload.source) lines.unshift(`Source: ${payload.source}`);
+      // Separator before technical details
+      lines.push('');
+      lines.push('Technical details:');
+    }
+
 
     if (isRssSummary || isWrapped) {
       const s = isWrapped ? payload.summary : payload;
@@ -505,6 +517,7 @@ async function init() {
     await new Promise((resolve) => {
       function listener(id, info) {
         if (id === tabId && info.status === 'complete') {
+
           chrome.tabs.onUpdated.removeListener(listener);
           resolve();
         }
@@ -526,7 +539,7 @@ async function init() {
       await waitForTabComplete(tabId);
       debug.steps.push({ step: 'tab-complete' });
 
-      // Attach a MAIN-world listener in the new tab so page console sees our logs
+      // Attach a MAIN-world listener for console logs (development-only gate removed to avoid await inside non-async)
       try {
         await chrome.scripting.executeScript({
           target: { tabId },
@@ -650,7 +663,9 @@ async function init() {
         const payload = { youtubeVideos: { itemsById: res.itemsById, lastScanAt: new Date().toISOString() } };
         await chrome.storage.local.set(payload);
         await loadAndRender(mode, sourceFilter);
-        statusEl.textContent = source === 'suggested' ? `Suggested: merged ${items.length} items.` : `History: merged ${items.length} items.`;
+        statusEl.textContent = source === 'suggested'
+          ? `Suggested: found ${items.length}, saved +${res.added} new, ${res.updated} updated.`
+          : `History: found ${items.length}, saved +${res.added} new, ${res.updated} updated.`;
         // Always inject a completion banner into the YouTube tab (MAIN world)
         try {
           await chrome.scripting.executeScript({
@@ -732,6 +747,9 @@ async function init() {
                     'margin-left:10px', 'padding:6px 10px', 'border-radius:6px', 'border:1px solid #2a7', 'background:#2a7', 'color:white', 'cursor:pointer', 'display:inline-block'
                   ].join(';');
                   btn.addEventListener('click', () => { try { window.postMessage({ __FGPT_REQUEST_CLOSE__: true }, '*'); } catch {} });
+      // Provide compact scan results summary to the panel
+      renderDebug({ action: 'scrape', source, found: items.length, added: res.added, updated: res.updated, steps: debug.steps, meta: debug });
+
                   const msg = document.createElement('span');
                   msg.className = 'msg';
                   el.appendChild(msg);
@@ -741,6 +759,9 @@ async function init() {
                 const msg = el.querySelector('.msg');
                 if (msg) msg.textContent = `Scan complete (${src}): found ${count} items.`;
               } catch (e) {}
+          // Provide compact scan results summary to the panel (ensure once)
+          try { renderDebug({ action: 'scrape', source, found: items.length, added: res.added, updated: res.updated, steps: debug.steps, meta: debug }); } catch {}
+
             }
           });
           await chrome.scripting.executeScript({

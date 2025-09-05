@@ -394,20 +394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // Quick link to Summarizer Test page (temporary)
-  try {
-    const testLink = document.createElement('button');
-    testLink.className = 'icon-button';
-    testLink.title = 'Summarizer Test';
-    testLink.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h15m-15 4.5h9" />
-      </svg>`;
-    document.querySelector('#llmInfo .icons')?.insertBefore(testLink, document.getElementById('optionsLink'));
-    testLink.addEventListener('click', ()=> {
-      chrome.tabs.create({ url: chrome.runtime.getURL('summarizer_test.html') });
-    });
-  } catch (_) {}
+  // (removed) Summarizer Test quick link for production
 
   // Badge-like cue on the icon when there are new videos since last view
   try {
