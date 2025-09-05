@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const copyButton = document.getElementById('copyButton');
   const optionsLink = document.getElementById('optionsLink');
   const llmDetails = document.getElementById('llmDetails');
+  const engineSelect = document.getElementById('engineSelect');
   const micButton = document.getElementById('micButton');
   const newVideosBtn = document.getElementById('newVideos');
 
@@ -77,7 +78,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   optionsLink.title = t('tooltips.settings');
   micButton.title = t('tooltips.microphone');
 
-  // Chat Button Handler
+  // Chat Button Handler (Local Prompt API or LLM based on dropdown)
+  let lmSession = null;
   chatButton.addEventListener('click', async () => {
     const message = inputTextarea.value.trim();
     if (chatButton.disabled) return;
@@ -85,232 +87,134 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatButton.textContent = t('buttons.processing');
     chatButton.disabled = true;
 
+    const engine = (engineSelect?.value) || 'local';
+
     try {
-      const { selectedServer, llmServerUrl, llmApiKey, llmModel } = await new Promise((resolve) =>
-        chrome.storage.sync.get(['selectedServer', 'llmServerUrl', 'llmApiKey', 'llmModel'], resolve)
-      );
-
-      if (!llmServerUrl) {
-        throw new Error(t('errors.llm_url_not_configured'));
-      }
-
-      // Get current tab info
+      // Get current tab info + page content (used by both engines)
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const url = tab.url;
 
-      // Add user message to chat or request summary
       const userMessage = message || t('messages.summarize_page');
-      if (userMessage) {
-        addMessage(userMessage, true);
-      }
+      if (userMessage) addMessage(userMessage, true);
 
-      // Prepare system message with language context
-      const systemMessage = t('system_messages.assistant_role') +
-        ` Please respond in the user's language (${userLang}) unless he poses his question in different language. Use a natural, conversational tone.`;
-
-      // Prepare context message
-      let contextMessage = `${t('system_messages.context_prefix')} ${url}\n`;
-      if (tab.title) {
-        contextMessage += `Title: ${tab.title}\n\n`;
-      }
-
-      // Get page content
       let pageContent = '';
       try {
-        const [{ result }] = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          func: () => document.body.innerText
-        });
-        pageContent = result;
-      } catch (error) {
-        console.log('Could not get page content:', error);
-      }
+        const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => document.body.innerText });
+        pageContent = result || '';
+      } catch (_) {}
 
-      if (pageContent) {
-        contextMessage += `${t('system_messages.page_content')}:\n${pageContent}\n\n`;
-      }
-
-      // Add user's question
-      if (userMessage) {
-        contextMessage += userMessage;
-      }
-
-      // Prepare the messages array
-      const messages = [
-        { role: "system", content: systemMessage },
-        { role: "user", content: contextMessage }
-      ];
-
-      // Remove duplicate user message since it's already in the context
-      if (!message) {
-        messages.pop();
-        messages.push({ role: "user", content: contextMessage });
-      }
-      // Prepare headers based on the selected server
-      const headers = {
-        'Content-Type': 'application/json'
+      // Helper to persist assistant message
+      const persistAssistant = async (text) => {
+        if (!text) return;
+        conversationHistory.push({ role: 'assistant', content: text });
+        await chrome.storage.local.set({ [`chat_${currentTabId}`]: { url: currentUrl, history: conversationHistory } });
       };
 
-      if (selectedServer === 'openai' && llmApiKey) {
-        headers['Authorization'] = `Bearer ${llmApiKey}`;
-      } else if (selectedServer === 'anthropic' && llmApiKey) {
-        headers['x-api-key'] = llmApiKey;
-        headers['anthropic-version'] = '2023-06-01';
+      // Try Local Prompt API first if selected
+      if (engine === 'local') {
+        try {
+          if (typeof LanguageModel === 'undefined') throw new Error('Prompt API unavailable');
+
+          // Create session once with download progress
+          if (!lmSession) {
+            lmSession = await LanguageModel.create({
+              monitor(m){ m.addEventListener('downloadprogress', e => { chatButton.textContent = `Downloading… ${Math.round((e.loaded||0)*100)}%`; }); }
+            });
+          }
+
+          // Build query + context
+          const query = message || 'Summarize the page concisely with key highlights and bullets.';
+          const ctxPieces = [];
+          if (tab.title) ctxPieces.push(`Title: ${tab.title}`);
+          if (url) ctxPieces.push(url);
+          if (pageContent) ctxPieces.push(pageContent.slice(0, 40000));
+          const ctx = ctxPieces.join('\n\n');
+
+          // Stream response
+          let currentMessage = '';
+          let messageDiv = null;
+          const controller = new AbortController();
+          const stream = lmSession.promptStreaming(`${query}\n\n${ctx}`, { signal: controller.signal });
+          for await (const chunk of stream) {
+            currentMessage += chunk;
+            if (!messageDiv) {
+              messageDiv = document.createElement('div');
+              messageDiv.className = 'message assistant-message';
+              chatContainer.appendChild(messageDiv);
+            }
+            if (containsMarkdown(currentMessage)) {
+              messageDiv.classList.add('markdown-content');
+              messageDiv.innerHTML = marked.parse(currentMessage);
+              messageDiv.querySelectorAll('a').forEach(link => { link.target = '_blank'; link.rel = 'noopener noreferrer'; });
+            } else {
+              messageDiv.textContent = currentMessage;
+            }
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+          }
+          await persistAssistant(currentMessage);
+          return; // Success; skip LLM
+        } catch (e) {
+          // Fall back to LLM
+          addMessage('On-device model unavailable — falling back to LLM', false);
+        }
       }
 
-      // Prepare the payload based on the server type
+      // LLM path (existing behavior)
+      const { selectedServer, llmServerUrl, llmApiKey, llmModel } = await new Promise((resolve) =>
+        chrome.storage.sync.get(['selectedServer', 'llmServerUrl', 'llmApiKey', 'llmModel'], resolve)
+      );
+      if (!llmServerUrl) throw new Error(t('errors.llm_url_not_configured'));
+
+      const systemMessage = t('system_messages.assistant_role') + ` Please respond in the user's language (${userLang}) unless he poses his question in different language. Use a natural, conversational tone.`;
+      let contextMessage = `${t('system_messages.context_prefix')} ${url}\n`;
+      if (tab.title) contextMessage += `Title: ${tab.title}\n\n`;
+      if (pageContent) contextMessage += `${t('system_messages.page_content')}:\n${pageContent}\n\n`;
+      if (userMessage) contextMessage += userMessage;
+      const messages = [ { role: 'system', content: systemMessage }, { role: 'user', content: contextMessage } ];
+      if (!message) { messages.pop(); messages.push({ role: 'user', content: contextMessage }); }
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (selectedServer === 'openai' && llmApiKey) headers['Authorization'] = `Bearer ${llmApiKey}`;
+      else if (selectedServer === 'anthropic' && llmApiKey) { headers['x-api-key'] = llmApiKey; headers['anthropic-version'] = '2023-06-01'; }
+
       let payload;
       switch (selectedServer) {
         case 'openai':
-          payload = {
-            model: llmModel,
-            messages: messages.map(msg => ({
-              role: msg.role,
-              content: msg.content
-            })),
-            temperature: 0.7,
-            max_tokens: 2000,
-            stream: true
-          };
-          break;
-
+          payload = { model: llmModel, messages: messages.map(m=>({role:m.role, content:m.content})), temperature: 0.7, max_tokens: 2000, stream: true }; break;
         case 'anthropic':
-          payload = {
-            model: llmModel,
-            messages: messages.map(msg => ({
-              role: msg.role === 'system' ? 'assistant' : msg.role,
-              content: msg.content
-            })),
-            stream: true,
-            max_tokens: 2000
-          };
-          break;
-
-        default: // ollama
-          payload = {
-            model: llmModel,
-            messages: messages,
-            stream: true,
-            options: {
-              temperature: 0.7
-            }
-          };
+          payload = { model: llmModel, messages: messages.map(m=>({role: m.role==='system'?'assistant':m.role, content:m.content})), stream: true, max_tokens: 2000 }; break;
+        default:
+          payload = { model: llmModel, messages, stream: true, options: { temperature: 0.7 } };
       }
 
-      // Send request to LLM
-      const response = await fetch(llmServerUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload)
-      });
-
+      const response = await fetch(llmServerUrl, { method: 'POST', headers, body: JSON.stringify(payload) });
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('LLM Error Response:', {
-          status: response.status,
-          headers: Object.fromEntries(response.headers.entries()),
-          body: errorText,
-          sentPayload: payload
-        });
-
-        let errorMessage = `${t('errors.llm_server_error')} ${response.status}`;
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error?.message) {
-            errorMessage += `: ${errorJson.error.message}`;
-          }
-        } catch (e) {
-          errorMessage += errorText ? `: ${errorText}` : '';
-        }
-        throw new Error(errorMessage);
+        console.error('LLM Error Response:', { status: response.status, headers: Object.fromEntries(response.headers.entries()), body: errorText, sentPayload: payload });
+        let msg = `${t('errors.llm_server_error')} ${response.status}`; try { const j = JSON.parse(errorText); if (j.error?.message) msg += `: ${j.error.message}`; } catch (_) { msg += errorText ? `: ${errorText}` : ''; }
+        throw new Error(msg);
       }
 
-      // Handle streaming response
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let currentMessage = '';
       let messageDiv = null;
-
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
+        const { done, value } = await reader.read(); if (done) break;
         const chunk = decoder.decode(value);
-
-        // Handle different streaming formats
         if (selectedServer === 'openai') {
           const lines = chunk.split('\n');
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const jsonStr = line.slice(6);
-              if (jsonStr === '[DONE]') continue;
-              try {
-                const json = JSON.parse(jsonStr);
-                if (json.choices?.[0]?.delta?.content) {
-                  currentMessage += json.choices[0].delta.content;
-                }
-              } catch (e) {
-                console.warn('Failed to parse OpenAI response chunk:', e);
-              }
-            }
-          }
+          for (const line of lines) { if (line.startsWith('data: ')) { const jsonStr = line.slice(6); if (jsonStr === '[DONE]') continue; try { const json = JSON.parse(jsonStr); if (json.choices?.[0]?.delta?.content) currentMessage += json.choices[0].delta.content; } catch (_) {} } }
         } else if (selectedServer === 'anthropic') {
-          try {
-            const json = JSON.parse(chunk);
-            if (json.content?.[0]?.text) {
-              currentMessage += json.content[0].text;
-            }
-          } catch (e) {
-            console.warn('Failed to parse Anthropic response chunk:', e);
-          }
+          try { const json = JSON.parse(chunk); if (json.content?.[0]?.text) currentMessage += json.content[0].text; } catch (_) {}
         } else {
-          try {
-            const json = JSON.parse(chunk);
-            if (json.message?.content) {
-              currentMessage += json.message.content;
-            }
-          } catch (e) {
-            console.warn('Failed to parse Ollama response chunk:', e);
-          }
+          try { const json = JSON.parse(chunk); if (json.message?.content) currentMessage += json.message.content; } catch (_) {}
         }
-
-        // Update the UI with the current message
-        if (!messageDiv) {
-          messageDiv = document.createElement('div');
-          messageDiv.className = 'message assistant-message';
-          if (containsMarkdown(currentMessage)) {
-            messageDiv.classList.add('markdown-content');
-          }
-          chatContainer.appendChild(messageDiv);
-        }
-
-        if (containsMarkdown(currentMessage)) {
-          messageDiv.innerHTML = marked.parse(currentMessage);
-          messageDiv.querySelectorAll('a').forEach(link => {
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-          });
-        } else {
-          messageDiv.textContent = currentMessage;
-        }
+        if (!messageDiv) { messageDiv = document.createElement('div'); messageDiv.className = 'message assistant-message'; chatContainer.appendChild(messageDiv); }
+        if (containsMarkdown(currentMessage)) { messageDiv.classList.add('markdown-content'); messageDiv.innerHTML = marked.parse(currentMessage); messageDiv.querySelectorAll('a').forEach(link => { link.target = '_blank'; link.rel = 'noopener noreferrer'; }); } else { messageDiv.textContent = currentMessage; }
         chatContainer.scrollTop = chatContainer.scrollHeight;
       }
-
-      // Add the complete message to conversation history and store it
-      if (currentMessage) {
-        conversationHistory.push({
-          role: "assistant",
-          content: currentMessage
-        });
-
-        // Store updated conversation history
-        await chrome.storage.local.set({
-          [`chat_${currentTabId}`]: {
-            url: currentUrl,
-            history: conversationHistory
-          }
-        });
-      }
+      await persistAssistant(currentMessage);
 
     } catch (error) {
       addMessage(`Error: ${error.message}`, false);
@@ -393,22 +297,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     chrome.runtime.openOptionsPage();
   });
 
-  // Update LLM Info
-  async function updateLlmInfo() {
+  // Update engine dropdown contents only (no extra text)
+  async function updateEngineInfo() {
     const { selectedServer, llmModel } = await new Promise((resolve) =>
       chrome.storage.sync.get(['selectedServer', 'llmModel'], resolve)
     );
 
-    if (selectedServer && llmModel) {
-      const serverName = selectedServer.charAt(0).toUpperCase() + selectedServer.slice(1);
-      llmDetails.textContent = `${serverName} (${llmModel})`;
-    } else {
-      llmDetails.textContent = t('messages.llm_not_configured');
+    if (engineSelect) {
+      try {
+        if (typeof LanguageModel !== 'undefined') {
+          const avail = await LanguageModel.availability();
+          const label = avail === 'available' ? 'Local (on-device) — available'
+            : avail === 'downloadable' ? 'Local (on-device) — downloadable'
+            : avail === 'downloading' ? 'Local (on-device) — downloading…'
+            : 'Local (on-device) — unavailable';
+          engineSelect.options[0].text = label;
+          engineSelect.options[0].disabled = (avail === 'unavailable');
+        } else {
+          engineSelect.options[0].text = 'Local (on-device) — unavailable';
+          engineSelect.options[0].disabled = true;
+        }
+      } catch (_) {
+        engineSelect.options[0].text = 'Local (on-device) — unavailable';
+        engineSelect.options[0].disabled = true;
+      }
+      engineSelect.options[1].text = (selectedServer && llmModel) ? `LLM — ${selectedServer}/${llmModel}` : 'LLM';
     }
   }
 
-  // Initial LLM Info load
-  updateLlmInfo();
+  // Initial info load
+  updateEngineInfo();
 
   // Check for Markdown formatting
   function containsMarkdown(text) {
@@ -476,6 +394,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  // Quick link to Summarizer Test page (temporary)
+  try {
+    const testLink = document.createElement('button');
+    testLink.className = 'icon-button';
+    testLink.title = 'Summarizer Test';
+    testLink.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h15m-15 4.5h15m-15 4.5h9" />
+      </svg>`;
+    document.querySelector('#llmInfo .icons')?.insertBefore(testLink, document.getElementById('optionsLink'));
+    testLink.addEventListener('click', ()=> {
+      chrome.tabs.create({ url: chrome.runtime.getURL('summarizer_test.html') });
+    });
+  } catch (_) {}
+
   // Badge-like cue on the icon when there are new videos since last view
   try {
     const { youtubeVideos, lastVideosViewedAt } = await chrome.storage.local.get(['youtubeVideos', 'lastVideosViewedAt']);
@@ -489,6 +422,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }).length;
     if (newVideosBtn) {
       if (count > 0) {
+  // Initialize engineSelect default based on Prompt availability
+  try {
+    if (typeof LanguageModel !== 'undefined') {
+      const avail = await LanguageModel.availability();
+      if (avail === 'available' || avail === 'downloadable' || avail === 'downloading') {
+        if (engineSelect) engineSelect.value = 'local';
+      } else {
+        if (engineSelect) engineSelect.value = 'llm';
+      }
+    } else {
+      if (engineSelect) engineSelect.value = 'llm';
+    }
+  } catch (_) {}
+
         newVideosBtn.classList.add('has-new');
         newVideosBtn.title = `New Videos (${count})`;
       } else {

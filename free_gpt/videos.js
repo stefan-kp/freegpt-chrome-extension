@@ -17,6 +17,15 @@ function youTubeThumbUrl(videoId) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
+function effectiveDateIso(v) {
+  // Prefer publishedAt when valid, else fall back to lastSeenAt/addedAt
+  if (v && v.publishedAt && !isNaN(Date.parse(v.publishedAt))) return v.publishedAt;
+  if (v && v.lastSeenAt && !isNaN(Date.parse(v.lastSeenAt))) return v.lastSeenAt;
+  if (v && v.addedAt && !isNaN(Date.parse(v.addedAt))) return v.addedAt;
+  return new Date().toISOString();
+}
+
+
 function iconCopyButton(onClick) {
   const btn = document.createElement('button');
   btn.className = 'icon-button';
@@ -69,6 +78,13 @@ function row(video) {
 
   const tdCh = document.createElement('td');
   const aCh = document.createElement('a');
+// Handle close tab requests from YouTube banner
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg && msg.type === 'FGPT_CLOSE_TAB' && sender?.tab?.id) {
+    chrome.tabs.remove(sender.tab.id).catch(()=>{});
+  }
+});
+
   aCh.href = `https://www.youtube.com/channel/${video.channelId}`;
   aCh.textContent = video.channelTitle || video.channelId;
   aCh.target = '_blank';
@@ -95,10 +111,16 @@ function row(video) {
   hDesc.textContent = video.description || '';
   const hMeta = document.createElement('div');
   hMeta.className = 'hc-meta';
-  hMeta.textContent = fmtDate(video.publishedAt);
+  // Show published date if valid, else watched text if present, else omit
+  let metaText = '';
+  if (video.publishedAt) {
+    const ts = Date.parse(video.publishedAt);
+    if (!isNaN(ts)) metaText = fmtDate(video.publishedAt);
+  }
+  if (!metaText && video.watchedAtText) metaText = video.watchedAtText;
   hc.appendChild(hImg);
   if (hDesc.textContent) hc.appendChild(hDesc);
-  hc.appendChild(hMeta);
+  if (metaText) { hMeta.textContent = metaText; hc.appendChild(hMeta); }
   tdTitle.appendChild(hc);
 
   const tdActions = document.createElement('td');
@@ -116,6 +138,20 @@ function row(video) {
   tdActions.appendChild(copy);
 
   tr.appendChild(tdThumb);
+// Determine summarization capabilities and preference
+async function getSummarizeCapabilities() {
+  const { summarizeEngine, selectedServer, llmServerUrl } = await chrome.storage.sync.get([
+    'summarizeEngine', 'selectedServer', 'llmServerUrl'
+  ]);
+  let availability = 'unavailable';
+  try {
+    if (typeof Summarizer !== 'undefined') availability = await Summarizer.availability();
+  } catch (_) { availability = 'unavailable'; }
+  const hasIntegrated = availability && availability !== 'unavailable';
+  const llmConfigured = !!llmServerUrl;
+  return { preferred: summarizeEngine || 'auto', hasIntegrated, availability, llmConfigured, selectedServer, llmServerUrl };
+}
+
   tr.appendChild(tdCh);
   tr.appendChild(tdTitle);
   tr.appendChild(tdActions);
@@ -151,7 +187,7 @@ function renderByChannel(videos) {
     title.className = 'group-title';
     title.textContent = channel;
     container.appendChild(title);
-    container.appendChild(renderTable(items.sort((a,b)=> new Date(b.publishedAt)-new Date(a.publishedAt))));
+    container.appendChild(renderTable(items.sort((a,b)=> new Date(effectiveDateIso(b)) - new Date(effectiveDateIso(a)))));
   }
   return container;
 }
@@ -176,7 +212,7 @@ function renderByDate(videos) {
   }
 
   for (const v of videos) {
-    const key = dayKey(v.publishedAt);
+    const key = dayKey(effectiveDateIso(v));
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(v);
   }
@@ -207,7 +243,14 @@ function renderByDate(videos) {
       title.after(mount);
       try {
         const html = await summarizeDay(human, items, true);
-        mount.innerHTML = sanitizeHtml(html);
+        // If the result looks like markdown (starts with #, -, *, etc.), render via marked
+        const looksMd = /^\s*(?:[#>*\-]|\d+\.)/.test(html || '');
+        if (looksMd) {
+          mount.classList.add('markdown-content');
+          mount.innerHTML = sanitizeHtml(marked.parse(html));
+        } else {
+          mount.innerHTML = sanitizeHtml(html);
+        }
       } catch (e) {
         mount.textContent = 'Summary failed.';
       } finally {
@@ -225,26 +268,51 @@ function renderByDate(videos) {
 }
 
 async function summarizeDay(dayLabel, items) {
-  try {
-    const { selectedServer, llmServerUrl, llmApiKey, llmModel } = await new Promise((resolve) =>
-      chrome.storage.sync.get(['selectedServer', 'llmServerUrl', 'llmApiKey', 'llmModel'], resolve)
-    );
-    if (!llmServerUrl) {
-      alert('LLM not configured');
-      return;
+  // Prefer integrated Summarizer when available, else LLM server
+  const { preferred, hasIntegrated, llmConfigured, selectedServer, llmServerUrl, llmApiKey, llmModel } = Object.assign(
+    { preferred: 'auto', hasIntegrated: false, llmConfigured: false },
+    await (async () => {
+      const caps = await getSummarizeCapabilities();
+      const more = await chrome.storage.sync.get(['llmApiKey', 'llmModel']);
+      return { ...caps, ...more };
+    })()
+  );
+
+  const list = items.map(v => `- Title: ${v.title}\n  URL: ${v.url}\n  Channel: ${v.channelTitle || v.channelId}\n  Description: ${v.description || ''}`).join('\n\n');
+
+  // 1) Integrated
+  if ((preferred === 'integrated' || preferred === 'auto') && hasIntegrated && typeof Summarizer !== 'undefined') {
+    try {
+      const availability = await Summarizer.availability();
+      if (availability === 'unavailable') throw new Error('Summarizer unavailable');
+      const summarizer = await Summarizer.create({ type: 'key-points', format: 'markdown', length: 'medium' });
+      const text = await summarizer.summarize(
+        `Videos for ${dayLabel}.\n\n${list}`,
+        { context: 'Return a concise markdown summary with bullet points and short highlights.' }
+      );
+      return text;
+    } catch (e) {
+      console.warn('Integrated summarizer failed, falling back to LLM:', e);
+      // fall through
     }
+  }
+
+  // 2) LLM server (fallback)
+  if (!llmConfigured || !llmServerUrl) {
+    alert('No summarizer available: please enable the Local Summarizer or configure an LLM server in Options.');
+    return '';
+  }
+  try {
     const headers = { 'Content-Type': 'application/json' };
     if (selectedServer === 'openai' && llmApiKey) headers['Authorization'] = `Bearer ${llmApiKey}`;
     else if (selectedServer === 'anthropic' && llmApiKey) { headers['x-api-key'] = llmApiKey; headers['anthropic-version'] = '2023-06-01'; }
 
-    const list = items.map(v => `- Title: ${v.title}\n  URL: ${v.url}\n  Channel: ${v.channelTitle || v.channelId}\n  Description: ${v.description || ''}`).join('\n\n');
     const sys = 'You are a helpful assistant that writes concise daily digests.';
     const user = `You are given a list of YouTube videos for ${dayLabel}. Return clean, minimal HTML only (no scripts/styles).
 - Start with a short paragraph titled "Overview of Common Themes or Topics".
 - Then a "Highlights" list as <ul><li>; each bullet contains an <a href> to the video URL, the title in <strong>, and a one‑line reason.
 - Include channel names when helpful. Keep it concise.
-Items:
-${list}`;
+Items:\n${list}`;
 
     let payload;
     switch (selectedServer) {
@@ -275,13 +343,17 @@ ${list}`;
 }
 
 
-async function loadAndRender(mode='date') {
+async function loadAndRender(mode='date', sourceFilter='all') {
   const now = Date.now();
   const since = now - LOOKBACK_MS;
   const { youtubeVideos } = await chrome.storage.local.get(['youtubeVideos']);
 
-  const allItems = Object.values(youtubeVideos?.itemsById || {});
-  const filtered = allItems.filter(v => new Date(v.publishedAt).getTime() >= since);
+  let allItems = Object.values(youtubeVideos?.itemsById || {});
+  // source filter
+  if (sourceFilter !== 'all') {
+    allItems = allItems.filter(v => Array.isArray(v.sources) && v.sources.includes(sourceFilter));
+  }
+  const filtered = allItems.filter(v => new Date(effectiveDateIso(v)).getTime() >= since || sourceFilter !== 'channel');
   const items = filtered.sort((a,b)=> new Date(b.publishedAt)-new Date(a.publishedAt));
 
   const content = document.getElementById('content');
@@ -305,12 +377,23 @@ async function init() {
   document.getElementById('pageHint').textContent = 'Only videos from the last 7 days are shown.';
 
   let mode = 'date';
-  await loadAndRender(mode);
+  const { ytSourceFilter } = await chrome.storage.sync.get(['ytSourceFilter']);
+  let sourceFilter = ytSourceFilter || 'all';
+  await loadAndRender(mode, sourceFilter);
 
-  document.getElementById('sortByDate').addEventListener('click', async ()=>{ mode='date'; await loadAndRender(mode); });
-  document.getElementById('sortByChannel').addEventListener('click', async ()=>{ mode='channel'; await loadAndRender(mode); });
+  const filterEl = document.getElementById('sourceFilter');
+  if (filterEl) {
+    filterEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-src]');
+      if (!btn) return;
+      sourceFilter = btn.dataset.src;
+      for (const b of filterEl.querySelectorAll('button')) b.classList.toggle('active', b===btn);
+      await chrome.storage.sync.set({ ytSourceFilter: sourceFilter });
+      await loadAndRender(mode, sourceFilter);
+    });
+  }
 
-  function renderDebug(summary) {
+  function renderDebug(payload) {
     let debugEl = document.getElementById('refreshDebug');
     if (!debugEl) {
       debugEl = document.createElement('details');
@@ -321,48 +404,373 @@ async function init() {
       debugEl.appendChild(sum);
       statusEl.after(debugEl);
     }
-    if (!summary) { debugEl.style.display = 'none'; return; }
+    if (!payload) { debugEl.style.display = 'none'; return; }
     debugEl.style.display = 'block';
     const pre = document.createElement('pre');
+
+    // Accept either a direct RSS summary or a wrapped/channel/scrape payload
+    const isRssSummary = payload && (payload.sinceIso || payload.perChannel);
+    const isWrapped = payload && payload.action && payload.summary;
+    const isScrape = payload && payload.action === 'scrape';
+
     const lines = [];
-    lines.push(`Window: since ${summary.sinceIso} to ${summary.nowIso}`);
-    (summary.perChannel || []).forEach(pc => {
-      if (!pc) return;
-      if (!pc.ok) {
-        lines.push(`CID ${pc.channelId}: ERROR ${pc.status || pc.error}`);
-      } else {
-        const sampleRecent = (pc.sampleRecent || []).map(s=>`${s.id}@${s.publishedAt}`).join(', ');
-        const sampleFirst = (pc.sampleAllFirst || []).map(s=>`${s.id}@${s.publishedAt}`).join(', ');
-        const sampleLast = (pc.sampleAllLast || []).map(s=>`${s.id}@${s.publishedAt}`).join(', ');
-        lines.push(`CID ${pc.channelId}: total ${pc.totalEntries}, recent ${pc.recentCount}, skipped ${pc.skippedOld}, earliest ${pc.earliestPublished}, latest ${pc.latestPublished}`);
-        if (sampleRecent) lines.push(`  recent sample: ${sampleRecent}`);
-        if (sampleFirst) lines.push(`  first sample: ${sampleFirst}`);
-        if (sampleLast) lines.push(`  last sample: ${sampleLast}`);
-      }
-    });
-    pre.textContent = lines.join('\n') || 'No per-channel details';
+
+    if (isRssSummary || isWrapped) {
+      const s = isWrapped ? payload.summary : payload;
+      lines.push(`Window: since ${s?.sinceIso || 'n/a'} to ${s?.nowIso || 'n/a'}`);
+      (s?.perChannel || []).forEach(pc => {
+        if (!pc) return;
+        if (!pc.ok) {
+          lines.push(`CID ${pc.channelId}: ERROR ${pc.status || pc.error}`);
+        } else {
+          const sampleRecent = (pc.sampleRecent || []).map(x=>`${x.id}@${x.publishedAt}`).join(', ');
+          const sampleFirst = (pc.sampleAllFirst || []).map(x=>`${x.id}@${x.publishedAt}`).join(', ');
+          const sampleLast = (pc.sampleAllLast || []).map(x=>`${x.id}@${x.publishedAt}`).join(', ');
+          lines.push(`CID ${pc.channelId}: total ${pc.totalEntries}, recent ${pc.recentCount}, skipped ${pc.skippedOld}, earliest ${pc.earliestPublished}, latest ${pc.latestPublished}`);
+          if (sampleRecent) lines.push(`  recent sample: ${sampleRecent}`);
+          if (sampleFirst) lines.push(`  first sample: ${sampleFirst}`);
+          if (sampleLast) lines.push(`  last sample: ${sampleLast}`);
+        }
+      });
+    }
+
+    if (isScrape) {
+      lines.push(`Scrape: ${payload.source}`);
+      (payload.steps || []).forEach((st, i) => {
+        const line = `${i+1}. ${st.step || st.s} ${st.file ? '('+st.file+')' : ''}`;
+        lines.push(st.meta ? `${line} ${JSON.stringify(st.meta)}` : line);
+        // Expand nested content-script debug from message-received
+        if ((st.step === 'message-received' || st.s === 'extracted') && st.meta && st.meta.debug) {
+          const cs = st.meta.debug || {};
+          lines.push(`   CS page: ${cs.page || ''}`);
+          lines.push(`   CS title: ${cs.title || ''}`);
+          (cs.steps || []).forEach((csSt, j) => {
+            if (csSt.s === 'initial') {
+              lines.push(`    - initial counts: ${JSON.stringify(csSt.counts || csSt.count || {})}`);
+            } else if (csSt.s === 'waited') {
+              const fields = { count: csSt.count, finalScrollY: csSt.finalScrollY, scrollH: csSt.scrollH };
+              lines.push(`    - waited: ${JSON.stringify(fields)}`);
+            } else if (csSt.s === 'extracted') {
+              lines.push(`    - extracted: anchors=${csSt.anchorsCount}, sample=${JSON.stringify(csSt.items || [])}`);
+            } else {
+              lines.push(`    - ${csSt.s}`);
+            }
+          });
+        }
+      });
+      if (payload.error) lines.push(`Error: ${payload.error}`);
+    }
+
+    if (!lines.length) lines.push('No details');
+    pre.textContent = lines.join('\n');
+
     // Replace previous content after the <summary>
     debugEl.querySelectorAll('pre').forEach(n=>n.remove());
     debugEl.appendChild(pre);
   }
 
   document.getElementById('refreshNow').addEventListener('click', async () => {
-    statusEl.textContent = 'Refreshing...';
+    statusEl.textContent = 'Refreshing channels...';
     try {
       const summary = await new Promise((resolve) => chrome.runtime.sendMessage({ type: 'REQUEST_YT_SCAN' }, resolve));
-      await loadAndRender(mode);
-      if (summary && typeof summary.scanned !== 'undefined') {
-        statusEl.textContent = `Refreshed: scanned ${summary.scanned}, feeds ok ${summary.okFeeds}, new last 14d ${summary.recentVideos}.`;
-      } else {
-        statusEl.textContent = 'Refreshed.';
-      }
-      renderDebug(summary);
+      await loadAndRender(mode, sourceFilter);
+      statusEl.textContent = summary && typeof summary.scanned !== 'undefined'
+        ? `Channels refreshed: scanned ${summary.scanned}, ok ${summary.okFeeds}, new last 14d ${summary.recentVideos}.`
+        : 'Channels refreshed.';
+      renderDebug({ action: 'channels-scan', summary });
       setTimeout(()=> statusEl.textContent = '', 2500);
     } catch (e) {
-      statusEl.textContent = 'Refresh failed.';
+      statusEl.textContent = 'Channels refresh failed.';
+      renderDebug({ action: 'channels-scan', error: String(e) });
       setTimeout(()=> statusEl.textContent = '', 2000);
     }
   });
+
+  // Ensure merge helper is available in page (via global script include as fallback)
+  async function ensureMergeHelper() {
+    if (typeof mergeVideos === 'function') return;
+    // videos.html includes youtube_video_merge.js, but if not yet executed, load dynamically
+    try {
+      await import(chrome.runtime.getURL('free_gpt/youtube_video_merge.js'));
+    } catch (_) {
+      // ignore; global include should provide mergeVideos
+    }
+    if (typeof mergeVideos !== 'function') throw new Error('Failed to load merge helper');
+  }
+
+  async function waitForTabComplete(tabId, timeoutMs = 15000) {
+    const start = Date.now();
+    const already = await chrome.tabs.get(tabId).catch(()=>null);
+    if (already && already.status === 'complete') return;
+    await new Promise((resolve) => {
+      function listener(id, info) {
+        if (id === tabId && info.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      }
+      chrome.tabs.onUpdated.addListener(listener);
+      setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, timeoutMs);
+    });
+  }
+
+  async function runScrape(source) {
+    const debug = { action: 'scrape', source, steps: [] };
+    const targetUrl = source === 'suggested' ? 'https://www.youtube.com/' : 'https://www.youtube.com/feed/history';
+    statusEl.textContent = source === 'suggested' ? 'Refreshing suggested...' : 'Refreshing history...';
+    try {
+      const tab = await chrome.tabs.create({ url: targetUrl, active: true });
+      const tabId = tab.id;
+      debug.steps.push({ step: 'tab-created', tabId, active: true });
+
+      await waitForTabComplete(tabId);
+      debug.steps.push({ step: 'tab-complete' });
+
+      // Attach a MAIN-world listener in the new tab so page console sees our logs
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          world: 'MAIN',
+          func: () => {
+            try {
+              if (!window.__FGPT_LISTENER__) {
+                window.__FGPT_LISTENER__ = true;
+                window.addEventListener('message', (e) => {
+                  try { const m = e && e.data; if (m && m.__FGPT_LOG__) console.log('[FGPT][msg]', m.tag, m.data); } catch {}
+                }, { passive: true });
+                console.log('[FGPT] listener attached');
+              }
+            } catch (err) { console.warn('[FGPT] listener attach failed', err); }
+          }
+        });
+        debug.steps.push({ step: 'listener-injected' });
+      } catch (err) {
+        debug.steps.push({ step: 'listener-inject-failed', error: String(err) });
+      }
+
+      const file = source === 'suggested' ? 'free_gpt/youtube_parse_start.js' : 'free_gpt/youtube_parse_history.js';
+      try {
+        await chrome.scripting.executeScript({ target: { tabId }, files: [file] });
+        debug.steps.push({ step: 'script-injected', file, mode: 'files' });
+      } catch (e) {
+        // Fallback: inline scraper function injection (isolated world), with broader selectors and wait
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          func: (src) => {
+            const sleep = (ms) => new Promise(r=>setTimeout(r, ms));
+            const absUrl = (href) => { try { return new URL(href, location.origin).toString(); } catch { return href; } };
+            const getVid = (href) => { try { const u = new URL(absUrl(href)); const v = u.searchParams.get('v'); if (v) return v; } catch{} const m=(href||'').match(/[?&]v=([^&]+)/); return m?decodeURIComponent(m[1]):''; };
+            const collectAnchors = () => {
+              const groups = {
+                watchHref: Array.from(document.querySelectorAll('a[href*="/watch?v="]')),
+                videoTitle: Array.from(document.querySelectorAll('ytd-video-renderer a#video-title, ytd-compact-video-renderer a#video-title, ytd-rich-item-renderer a#video-title, a#video-title-link, a.yt-lockup-metadata-view-model__title')),
+                thumbnail: Array.from(document.querySelectorAll('a#thumbnail[href*="/watch"]')),
+                lockup: Array.from(document.querySelectorAll('yt-lockup-view-model a[href^="/watch"]'))
+              };
+              return [...new Set([].concat(...Object.values(groups)))];
+            };
+            const waitForAnchors = async (min=30, untilMs=12000) => {
+              const start = Date.now();
+              while (Date.now()-start < untilMs){
+                const a = collectAnchors();
+                if (a.length >= min) return a;
+                window.scrollTo(0, document.body.scrollHeight);
+                await sleep(500);
+              }
+              return collectAnchors();
+            };
+            const getTitle = (root, a) => {
+              let t='';
+              const h3 = root?.querySelector('h3.yt-lockup-metadata-view-model__heading-reset[title]');
+              if (h3 && (t=h3.getAttribute('title')?.trim())) return t;
+              const span = root?.querySelector('a.yt-lockup-metadata-view-model__title .yt-core-attributed-string');
+              if (span && (t=span.textContent?.trim())) return t;
+              const vt = root?.querySelector('a#video-title, yt-formatted-string#video-title');
+              if (vt && (t=vt.textContent?.trim())) return t;
+              if (a && a.matches?.('a#video-title, a#video-title-link, a.yt-lockup-metadata-view-model__title') && (t=a.textContent?.trim())) return t;
+              const at = a?.getAttribute?.('title'); if (at && (t=at.trim())) return t;
+              return (a?.textContent||'').trim();
+            };
+            const scrape = (anchors, max) => {
+              const seen=new Set(); const items=[];
+              for (const a of anchors){
+                const href=a.getAttribute('href')||a.href||''; const id=getVid(href); if(!id||seen.has(id)) continue; seen.add(id);
+                const root=a.closest('ytd-video-renderer, ytd-rich-item-renderer, ytd-grid-video-renderer, yt-lockup-view-model, #content, ytd-compact-video-renderer')||a.parentElement;
+                const title=getTitle(root, a);
+                let channelTitle='', channelId='';
+                if(root){ const chA=root.querySelector('a[href^="/channel/"]')||root.querySelector('a[href^="/@"]'); if(chA){ channelTitle=(chA.textContent||'').trim(); const chHref=chA.getAttribute('href')||''; const m=chHref.match(/\/channel\/([^/?#]+)/); if(m) channelId=m[1]; } }
+                items.push({ videoId:id, title, url: absUrl(href), channelId, channelTitle, publishedAt:'', description:'' });
+                if(items.length>=max) break;
+              }
+              return items;
+            };
+            (async () => {
+              const debug = { page: location.href, title: document.title, steps: [] };
+              try {
+                let anchors = collectAnchors();
+                debug.steps.push({ s:'initial', count: anchors.length });
+                if (anchors.length < 30) { anchors = await waitForAnchors(30, 12000); debug.steps.push({ s:'waited', count: anchors.length }); }
+                const items = scrape(anchors, src==='suggested'?120:200);
+                debug.steps.push({ s:'extracted', anchorsCount: anchors.length, items: items.slice(0,3).map(x=>x.videoId) });
+                chrome.runtime.sendMessage({ type:'YOUTUBE_SCRAPE_RESULT', source: src, items, debug });
+              } catch (err) {
+                debug.error = String(err);
+                chrome.runtime.sendMessage({ type:'YOUTUBE_SCRAPE_RESULT', source: src, items: [], debug });
+              }
+            })();
+          },
+          args: [source]
+        });
+        debug.steps.push({ step: 'script-injected', file, mode: 'inline-fallback', error: String(e) });
+      }
+
+      const result = await new Promise((resolve) => {
+        const t = setTimeout(()=> resolve({ items: [], timeout: true }), 15000);
+        function onMsg(msg, sender){
+          if (sender.tab && sender.tab.id===tabId && msg && msg.type==='YOUTUBE_SCRAPE_RESULT'){
+            chrome.runtime.onMessage.removeListener(onMsg);
+            clearTimeout(t);
+            resolve(msg);
+          }
+        }
+        // Also listen from pages that post via window to service worker relay (future-proof)
+        chrome.runtime.onMessage.addListener(onMsg);
+      });
+      debug.steps.push({ step: 'message-received', meta: { timeout: !!result.timeout, items: (result.items||[]).length, debug: result.debug || null } });
+
+      // Always keep open; store last scan tab id for banner close
+      window.__FGPT_LAST_SCAN_TAB_ID__ = tabId;
+      debug.steps.push({ step: 'tab-kept-open', tabId });
+
+      const items = result.items || [];
+      if (items.length) {
+        await ensureMergeHelper();
+        const { youtubeVideos } = await chrome.storage.local.get(['youtubeVideos']);
+        const res = mergeVideos(youtubeVideos?.itemsById || {}, items, source);
+        const payload = { youtubeVideos: { itemsById: res.itemsById, lastScanAt: new Date().toISOString() } };
+        await chrome.storage.local.set(payload);
+        await loadAndRender(mode, sourceFilter);
+        statusEl.textContent = source === 'suggested' ? `Suggested: merged ${items.length} items.` : `History: merged ${items.length} items.`;
+        // Always inject a completion banner into the YouTube tab (MAIN world)
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId }, world: 'MAIN',
+            args: [source, items.length],
+            func: (src, count) => {
+              try {
+                // Create or update banner
+                const id = '__fgpt_scan_banner__';
+                let el = document.getElementById(id);
+                if (!el) {
+                  el = document.createElement('div');
+                  el.id = id;
+                  el.style.cssText = [
+                    'position:fixed', 'right:16px', 'bottom:16px', 'z-index:2147483647',
+                    'background:rgba(20,23,26,.96)', 'color:#e6ffe6', 'box-shadow:0 4px 14px rgba(0,0,0,.3)',
+                    'border-radius:10px', 'padding:12px 14px', 'max-width:340px', 'font:13px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial',
+                    'border:1px solid rgba(90,180,90,.5)'
+                  ].join(';');
+                  const btn = document.createElement('button');
+                  btn.textContent = 'Close Tab';
+                  btn.style.cssText = [
+                    'margin-left:10px', 'padding:6px 10px', 'border-radius:6px', 'border:1px solid #2a7', 'background:#2a7', 'color:white', 'cursor:pointer'
+                  ].join(';');
+                  btn.addEventListener('click', () => { try { window.postMessage({ __FGPT_REQUEST_CLOSE__: true }, '*'); } catch {} });
+                  const msg = document.createElement('span');
+                  msg.className = 'msg';
+                  el.appendChild(msg);
+                  el.appendChild(btn);
+                  document.documentElement.appendChild(el);
+                }
+                const msg = el.querySelector('.msg');
+                if (msg) msg.textContent = `Scan complete (${src}): found ${count} items.`;
+              } catch (e) {
+                // ignore
+              }
+            }
+          });
+          // Relay for close message (isolated world)
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              try {
+                if (!window.__FGPT_CLOSE_RELAY__) {
+                  window.__FGPT_CLOSE_RELAY__ = true;
+                  window.addEventListener('message', (e) => {
+                    const m = e && e.data; if (m && m.__FGPT_REQUEST_CLOSE__) {
+                      chrome.runtime.sendMessage({ type: 'FGPT_CLOSE_TAB' }).catch(()=>{});
+                    }
+                  });
+                }
+              } catch {}
+            }
+          });
+        } catch {}
+      } else {
+        statusEl.textContent = 'Nothing found.';
+        // Also show completion banner with 0 items to meet UX expectation
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId }, world: 'MAIN',
+            args: [source, 0],
+            func: (src, count) => {
+              try {
+                const id = '__fgpt_scan_banner__';
+                let el = document.getElementById(id);
+                if (!el) {
+                  el = document.createElement('div');
+                  el.id = id;
+                  el.style.cssText = [
+                    'position:fixed', 'right:16px', 'bottom:16px', 'z-index:2147483647',
+                    'background:rgba(20,23,26,.96)', 'color:#e6ffe6', 'box-shadow:0 4px 14px rgba(0,0,0,.3)',
+                    'border-radius:10px', 'padding:12px 14px', 'max-width:340px', 'font:13px/1.45 system-ui,Segoe UI,Roboto,Helvetica,Arial',
+                    'border:1px solid rgba(90,180,90,.5)'
+                  ].join(';');
+                  const btn = document.createElement('button');
+                  btn.textContent = 'Close Tab';
+                  btn.style.cssText = [
+                    'margin-left:10px', 'padding:6px 10px', 'border-radius:6px', 'border:1px solid #2a7', 'background:#2a7', 'color:white', 'cursor:pointer', 'display:inline-block'
+                  ].join(';');
+                  btn.addEventListener('click', () => { try { window.postMessage({ __FGPT_REQUEST_CLOSE__: true }, '*'); } catch {} });
+                  const msg = document.createElement('span');
+                  msg.className = 'msg';
+                  el.appendChild(msg);
+                  el.appendChild(btn);
+                  document.documentElement.appendChild(el);
+                }
+                const msg = el.querySelector('.msg');
+                if (msg) msg.textContent = `Scan complete (${src}): found ${count} items.`;
+              } catch (e) {}
+            }
+          });
+          await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              try {
+                if (!window.__FGPT_CLOSE_RELAY__) {
+                  window.__FGPT_CLOSE_RELAY__ = true;
+                  window.addEventListener('message', (e) => {
+                    const m = e && e.data; if (m && m.__FGPT_REQUEST_CLOSE__) {
+                      chrome.runtime.sendMessage({ type: 'FGPT_CLOSE_TAB' }).catch(()=>{});
+                    }
+                  });
+                }
+              } catch {}
+            }
+          });
+        } catch {}
+      }
+      renderDebug(debug);
+      setTimeout(()=> statusEl.textContent = '', 2500);
+    } catch (e) {
+      statusEl.textContent = 'Refresh failed.';
+      renderDebug({ action: 'scrape', source, error: String(e) });
+      setTimeout(()=> statusEl.textContent = '', 2000);
+    }
+  }
+
+  document.getElementById('refreshSuggested').addEventListener('click', ()=> runScrape('suggested'));
+  document.getElementById('refreshHistory').addEventListener('click', ()=> runScrape('history'));
 
   // Mark as viewed so the badge can clear
   await chrome.storage.local.set({ lastVideosViewedAt: new Date().toISOString() });

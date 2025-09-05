@@ -1,6 +1,7 @@
 // Save current URL for manual mode
 // YouTube RSS polling and badge updates
 importScripts('youtube_rss_parser.js');
+importScripts('youtube_video_merge.js');
 
 const YT_RSS_BASE = 'https://www.youtube.com/feeds/videos.xml?channel_id=';
 const TWO_HOURS_MINUTES = 120;
@@ -37,6 +38,15 @@ async function scanYouTubeFeeds() {
   summary.nowIso = new Date(now).toISOString();
 
   const itemsById = { ...(youtubeVideos?.itemsById || {}) };
+  // Migration: for pre-source entries, assume they came from RSS channels
+  try {
+    const nowIso = new Date().toISOString();
+    for (const v of Object.values(itemsById)) {
+      if (!Array.isArray(v.sources)) v.sources = ['channel'];
+      if (!v.addedAt) v.addedAt = v.publishedAt || nowIso;
+      if (!v.lastSeenAt) v.lastSeenAt = nowIso;
+    }
+  } catch (_) { /* no-op */ }
   const updatedChannels = [];
 
   summary.perChannel = [];
@@ -64,9 +74,16 @@ async function scanYouTubeFeeds() {
       summary.okFeeds += 1;
       summary.recentVideos += items.length;
       let newest = null;
-      for (const v of items) {
-        itemsById[v.videoId] = v;
-        if (!newest || new Date(v.publishedAt) > new Date(newest.publishedAt)) newest = v;
+      if (typeof mergeVideos === 'function') {
+        const res = mergeVideos(itemsById, items, 'channel');
+        for (const v of items) {
+          if (!newest || new Date(v.publishedAt) > new Date(newest.publishedAt)) newest = v;
+        }
+      } else {
+        for (const v of items) {
+          itemsById[v.videoId] = { ...v, sources: ['channel'], addedAt: new Date().toISOString(), lastSeenAt: new Date().toISOString() };
+          if (!newest || new Date(v.publishedAt) > new Date(newest.publishedAt)) newest = v;
+        }
       }
       updatedChannels.push({ ...ch,
         lastRssCheckedAt: new Date().toISOString(),

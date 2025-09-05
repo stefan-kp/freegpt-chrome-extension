@@ -29,5 +29,15 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
-} 
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "free_gpt/youtube_parse_start.js",
+        "free_gpt/youtube_parse_history.js",
+        "free_gpt/youtube_video_merge.js"
+      ],
+      "matches": ["https://www.youtube.com/*"]
+    }
+  ]
+}

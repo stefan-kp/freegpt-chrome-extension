@@ -18,6 +18,98 @@ document.addEventListener('DOMContentLoaded', () => {
   const youtubeTableBody = document.getElementById('youtubeChannelsTableBody');
   const youtubeHint = document.getElementById('youtubeHint');
 
+  // Availability chips for Summarizer and Prompt APIs
+  const summAvailabilityChip = document.getElementById('summAvailabilityChip');
+  const summDownloadBtn = document.getElementById('summDownload');
+  const summRefreshBtn = document.getElementById('summRefresh');
+  const promptAvailabilityChip = document.getElementById('promptAvailabilityChip');
+  const promptDownloadBtn = document.getElementById('promptDownload');
+  const promptRefreshBtn = document.getElementById('promptRefresh');
+
+  function setChip(el, state, text) {
+    if (!el) return;
+    el.className = 'chip ' + (state ? `chip--${state}` : '');
+    el.textContent = text;
+  }
+
+  async function updateSummAvailability() {
+    let state = 'unavailable';
+    try {
+      if (typeof Summarizer !== 'undefined') {
+        state = await Summarizer.availability();
+      }
+    } catch (_) { state = 'unavailable'; }
+
+    if (state === 'available') {
+      setChip(summAvailabilityChip, 'available', 'Available');
+      if (summDownloadBtn) summDownloadBtn.style.display = 'none';
+    } else if (state === 'downloadable') {
+      setChip(summAvailabilityChip, 'downloadable', 'Downloadable');
+      if (summDownloadBtn) summDownloadBtn.style.display = '';
+    } else if (state === 'downloading') {
+      setChip(summAvailabilityChip, 'downloading', 'Downloading…');
+      if (summDownloadBtn) summDownloadBtn.style.display = 'none';
+    } else {
+      setChip(summAvailabilityChip, 'unavailable', 'Unavailable');
+      if (summDownloadBtn) summDownloadBtn.style.display = 'none';
+    }
+  }
+
+  async function updatePromptAvailability() {
+    let state = 'unavailable';
+    try {
+      if (typeof self.LanguageModel !== 'undefined') {
+        state = await self.LanguageModel.availability();
+      }
+    } catch (_) { state = 'unavailable'; }
+
+    if (state === 'available') {
+      setChip(promptAvailabilityChip, 'available', 'Available');
+      if (promptDownloadBtn) promptDownloadBtn.style.display = 'none';
+    } else if (state === 'downloadable') {
+      setChip(promptAvailabilityChip, 'downloadable', 'Downloadable');
+      if (promptDownloadBtn) promptDownloadBtn.style.display = '';
+    } else if (state === 'downloading') {
+      setChip(promptAvailabilityChip, 'downloading', 'Downloading…');
+      if (promptDownloadBtn) promptDownloadBtn.style.display = 'none';
+    } else {
+      setChip(promptAvailabilityChip, 'unavailable', 'Unavailable');
+      if (promptDownloadBtn) promptDownloadBtn.style.display = 'none';
+    }
+  }
+
+  if (summRefreshBtn) summRefreshBtn.addEventListener('click', updateSummAvailability);
+  if (promptRefreshBtn) promptRefreshBtn.addEventListener('click', updatePromptAvailability);
+
+  if (summDownloadBtn) summDownloadBtn.addEventListener('click', async () => {
+    if (typeof Summarizer === 'undefined') return;
+    try {
+      setChip(summAvailabilityChip, 'downloading', 'Downloading… 0%');
+      await Summarizer.create({
+        monitor(m){ m.addEventListener('downloadprogress', e => setChip(summAvailabilityChip, 'downloading', `Downloading… ${Math.round((e.loaded||0)*100)}%`)); }
+      });
+      setChip(summAvailabilityChip, 'available', 'Available');
+    } catch (_) {
+      setChip(summAvailabilityChip, 'unavailable', 'Download failed — Retry');
+    }
+  });
+
+  if (promptDownloadBtn) promptDownloadBtn.addEventListener('click', async () => {
+    if (typeof self.LanguageModel === 'undefined') return;
+    try {
+      setChip(promptAvailabilityChip, 'downloading', 'Downloading… 0%');
+      await self.LanguageModel.create({
+        monitor(m){ m.addEventListener('downloadprogress', e => setChip(promptAvailabilityChip, 'downloading', `Downloading… ${Math.round((e.loaded||0)*100)}%`)); }
+      });
+      setChip(promptAvailabilityChip, 'available', 'Available');
+    } catch (_) {
+      setChip(promptAvailabilityChip, 'unavailable', 'Download failed — Retry');
+    }
+  });
+
+  updateSummAvailability();
+  updatePromptAvailability();
+
   // Render table rows for YouTube channels
   function renderChannelsTable(channels) {
     if (!youtubeTableBody) return;
@@ -117,7 +209,8 @@ document.addEventListener('DOMContentLoaded', () => {
       'llmApiKey',
       'llmModel',
       'selectedServer',
-      'enableUrlTracker'
+      'enableUrlTracker',
+      'summarizeEngine'
     ],
     (data) => {
       if (data.serverUrl) serverUrl.value = data.serverUrl;
@@ -308,15 +401,16 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Validate model selection
-    if (!llmModelValue) {
+    // Validate model selection only when LLM is selected
+    const engineSelected = summEngineIntegrated?.classList.contains('selected') ? 'integrated' : 'llm';
+    if (engineSelected === 'llm' && !llmModelValue) {
       statusDiv.textContent = t('errors.model_required');
       statusDiv.className = 'error';
       return;
     }
 
-    // Validate API Key for external services
-    if (selectedServer && (selectedServer === 'openai' || selectedServer === 'anthropic') && !llmApiKeyValue) {
+    // Validate API Key for external services only when LLM engine is selected
+    if (engineSelected === 'llm' && selectedServer && (selectedServer === 'openai' || selectedServer === 'anthropic') && !llmApiKeyValue) {
       statusDiv.textContent = t('errors.api_key_required', { provider: selectedServer.toUpperCase() });
       statusDiv.className = 'error';
       return;
@@ -332,7 +426,8 @@ document.addEventListener('DOMContentLoaded', () => {
       llmApiKey: llmApiKeyValue,
       llmModel: llmModelValue,
       selectedServer,
-      enableUrlTracker: enableUrlTrackerValue
+      enableUrlTracker: enableUrlTrackerValue,
+      summarizeEngine: engineSelected
     }, () => {
       statusDiv.textContent = t('success.settings_saved');
       statusDiv.className = 'success';

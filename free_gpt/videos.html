@@ -6,7 +6,11 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; max-width: 960px; }
     h1 { margin-top: 0; }
-    .controls { display: flex; gap: 10px; margin-bottom: 10px; }
+    .controls { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; flex-wrap: wrap; }
+    .filters { display: inline-flex; gap: 6px; margin-left: auto; }
+    .segmented { display: inline-flex; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
+    .segmented button { padding: 6px 10px; border: none; background: #fff; cursor: pointer; font-size: 12px; color: #374151; }
+    .segmented button.active { background: #f3f4f6; font-weight: 600; }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; vertical-align: top; }
     .group-title { margin-top: 18px; font-weight: bold; font-size: 1.25em; display: flex; align-items: center; gap: 8px; }
@@ -38,12 +42,38 @@
   <div class="hint" id="pageHint">Only videos from the last 7 days are shown.</div>
   <div class="controls">
     <button id="refreshNow">Refresh now</button>
-    <button id="sortByDate">Sort by date</button>
-    <button id="sortByChannel">Sort by channel</button>
+    <button id="refreshSuggested">Refresh suggested</button>
+    <button id="refreshHistory">Refresh history</button>
+
+
+    <div class="filters">
+      <div class="segmented" id="sourceFilter">
+        <button data-src="all" class="active">All</button>
+        <button data-src="channel">Channels</button>
+        <button data-src="suggested">Suggested</button>
+        <button data-src="history">History</button>
+      </div>
+
+    </div>
   </div>
+  <details id="scanNote" style="margin:10px 0 0 0; max-width:640px; font-size:12px;">
+    <summary>How scanning works</summary>
+    <div style="margin-top:6px; line-height:1.4;">
+      <p>Scanning opens an active YouTube tab for better results.</p>
+      <p>A completion banner will appear when done — click “Close Tab” to dismiss.</p>
+      <p>Safe to close manually after 5–10 seconds if needed.</p>
+      <p style="margin-top:8px; opacity:.85;">Our testing shows that active tabs load more content and provide significantly better scan results compared to background processing. The tab will show a completion banner when scanning finishes, and you can close it using the “Close Tab” button or manually after a few seconds.</p>
+      <p style="margin-top:8px;">For Channels (RSS): feeds are downloaded and scanned periodically. First configure your YouTube settings on the Options page so we can import your channel list.</p>
+    </div>
+  </details>
+
   <div id="refreshStatus" class="hint"></div>
   <div id="content"></div>
 
+  <script src="lib/marked.min.js"></script>
+
+
+  <script src="youtube_video_merge.js"></script>
   <script type="module" src="videos.js"></script>
 </body>
 </html>
